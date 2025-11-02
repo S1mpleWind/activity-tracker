@@ -128,8 +128,8 @@ class ActivityDatabase:
                 result = cursor.fetchone()
 
                 if result:
-                    process_name, window_title, start_time, session_id = result
-                    return ()
+                    #process_name, window_title, start_time, session_id = result
+                    return result
                 else:
                     print('数据库中没有找到对应的会话，重置当前会话ID')
                     self.current_session_id = None
