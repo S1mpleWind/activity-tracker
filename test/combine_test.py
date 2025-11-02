@@ -32,6 +32,7 @@ def test_a_period():
         if current_session is None:
             # 没有当前会话，创建新会话
             db.record_window_switch(current_process, current_title)
+
         else:
             # 检查窗口是否变化
             session_process, session_title, _, _ = current_session

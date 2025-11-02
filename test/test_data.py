@@ -30,6 +30,13 @@ def test_switch_window():
 
     print(db.get_current_session_info())
 
+def test_get_current_session():
+    db = ActivityDatabase()
+    print(db.get_current_session_info())
+    db.record_window_switch('chrome.exe', 'gmail.com')
+    print(db.current_session_id)
+    print(db.get_current_session_info())
+
 def test_datastore():
     conn = sqlite3.connect('activity.db')  # 请确保路径正确
     cursor = conn.cursor()
