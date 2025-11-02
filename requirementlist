@@ -1,0 +1,13 @@
+# 绝对核心依赖
+psutil==5.9.4
+pystray==0.19.2
+Pillow==9.4.0
+
+# 平台特定 - Windows
+pywin32==306; sys_platform == 'win32'
+
+# 平台特定 - macOS
+pyobjc-core==9.2; sys_platform == 'darwin'
+
+# 平台特定 - Linux
+python-xlib==0.33; sys_platform == 'linux'
