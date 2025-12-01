@@ -10,7 +10,7 @@ from data.database_utils import*
 import time
 
 
-def test_a_period():
+def not_format_test_a_period():
     """
     test a period in a day
     :return:
@@ -22,7 +22,8 @@ def test_a_period():
 
     tracker.start_tracking()
 
-    for i in range(3000):
+    for i in range(600):
+        if i % 20 == 0 : print("running %f minutes" % (i/10))
         # 获取当前窗口
         current_process, current_title = tracker.get_foreground_info()
 
@@ -49,6 +50,10 @@ def test_a_period():
 
     v.visualize_daily(result)
 
+def __main__():
+    not_format_test_a_period()
 
+if __name__ == '__main__':
+    __main__()
 
 

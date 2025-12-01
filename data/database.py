@@ -190,6 +190,44 @@ class ActivityDatabase:
         """
         pass
 
+    def delete_today_data(self) -> int:
+        """删除今日的所有 window_sessions 记录，并返回删除的行数"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                # Count rows to be deleted
+                cursor.execute("SELECT COUNT(*) FROM window_sessions WHERE DATE(start_time) = DATE('now')")
+                count = cursor.fetchone()[0] or 0
+                cursor.execute("DELETE FROM window_sessions WHERE DATE(start_time) = DATE('now')")
+                conn.commit()
+                return count
+        except Exception as e:
+            print(f"Error deleting today's data: {e}")
+            return 0
+
+    def delete_range(self, start_date: str, end_date: str) -> int:
+        """删除在指定日期范围（包含两端）内的 window_sessions 记录，返回删除的行数
+
+        Args:
+            start_date: 'YYYY-MM-DD'
+            end_date: 'YYYY-MM-DD'
+        """
+        try:
+            # basic validation
+            _ = datetime.strptime(start_date, "%Y-%m-%d")
+            _ = datetime.strptime(end_date, "%Y-%m-%d")
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM window_sessions WHERE DATE(start_time) >= DATE(?) AND DATE(start_time) <= DATE(?)", (start_date, end_date))
+                count = cursor.fetchone()[0] or 0
+                cursor.execute("DELETE FROM window_sessions WHERE DATE(start_time) >= DATE(?) AND DATE(start_time) <= DATE(?)", (start_date, end_date))
+                conn.commit()
+                return count
+        except Exception as e:
+            print(f"Error deleting range data: {e}")
+            return 0
+
     def cleanup_old_records(self, days_to_keep: int = 30) -> int:
         """
         清理旧记录

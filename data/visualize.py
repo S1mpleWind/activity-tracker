@@ -52,3 +52,89 @@ class Visualize:
 
 
         pass
+
+    def plot_pie_figure(self, data, figsize=(6, 5)):
+        """返回一个 matplotlib Figure，用于在 GUI 中嵌入或在其他上下文中显示。
+
+        :param data: list of dicts with keys 'name' and 'minutes' (or 'minutes'-like)
+        :param figsize: figure size tuple
+        :return: matplotlib.figure.Figure
+        """
+        import textwrap
+
+        labels = [item['name'] for item in data]
+        sizes = [int(item.get('minutes', item.get('total_minutes', 0))) for item in data]
+
+        # decide whether to place labels on wedges or use a legend
+        use_legend = False
+        if len(labels) > 8 or any(len(l) > 18 for l in labels):
+            use_legend = True
+
+        # shorten labels for display on chart
+        def _shorten(s, width=18):
+            return textwrap.shorten(s, width=width, placeholder='...')
+
+        short_labels = [_shorten(l) for l in labels]
+
+        # dynamic figsize: more items -> taller figure
+        if figsize is None:
+            figsize = (6, max(5, len(labels) * 0.5))
+        else:
+            figsize = (figsize[0], max(figsize[1], len(labels) * 0.5))
+
+        fig = plt.Figure(figsize=figsize)
+        ax = fig.add_subplot(111)
+
+        wedges, texts, autotexts = ax.pie(
+            sizes,
+            labels=(None if use_legend else short_labels),
+            autopct='%1.1f%%' if not use_legend else None,
+            startangle=90,
+            pctdistance=0.75,
+            labeldistance=1.05,
+            wedgeprops={'linewidth': 0.5, 'edgecolor': 'white'}
+        )
+
+        ax.set_title('应用使用时间分布')
+        ax.axis('equal')
+
+        if use_legend:
+            # show legend to the right to avoid overlapping labels
+            ax.legend(wedges, labels, title='应用', bbox_to_anchor=(1.02, 0.5), loc='center left')
+
+        fig.tight_layout()
+        return fig
+
+    def plot_bar_figure(self, data, figsize=(7, None)):
+        """绘制水平条形图，适合标签较多或标签较长的情况。
+
+        data: list of dicts with 'name' and 'minutes' (or 'total_minutes')
+        """
+        import textwrap
+
+        labels = [item['name'] for item in data]
+        values = [int(item.get('minutes', item.get('total_minutes', 0))) for item in data]
+
+        # sort by value desc
+        pairs = sorted(zip(labels, values), key=lambda x: x[1], reverse=True)
+        labels_sorted, values_sorted = zip(*pairs) if pairs else ([], [])
+
+        # shorten long labels for display
+        labels_display = [textwrap.shorten(l, width=30, placeholder='...') for l in labels_sorted]
+
+        # dynamic height based on number of items
+        height = max(4, len(labels_display) * 0.4)
+        fig_height = height if figsize[1] is None else max(height, figsize[1])
+        fig = plt.Figure(figsize=(figsize[0], fig_height))
+        ax = fig.add_subplot(111)
+
+        y_positions = range(len(labels_display))
+        ax.barh(y_positions, values_sorted, color='tab:blue')
+        ax.set_yticks(y_positions)
+        ax.set_yticklabels(labels_display)
+        ax.invert_yaxis()
+        ax.set_xlabel('Minutes')
+        ax.set_title('按应用使用时间（分钟）')
+
+        fig.tight_layout()
+        return fig

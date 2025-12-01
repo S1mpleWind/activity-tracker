@@ -121,3 +121,69 @@ class DataAnalyzer:
                 })
 
             return daily_usage
+
+    def get_today_activities(self) -> List[Dict[str, Any]]:
+        """获取今日的所有活动记录（按时间排序）
+
+        返回每条记录的进程名、窗口标题、开始时间和持续分钟数
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                            SELECT p.name, ws.window_title, ws.start_time, ws.duration_seconds
+                            FROM window_sessions ws
+                                    JOIN processes p ON ws.process_id = p.id
+                            WHERE DATE(ws.start_time) = DATE('now')
+                            ORDER BY ws.start_time
+                            ''')
+
+            activities = []
+            for name, title, start_time, duration in cursor.fetchall():
+                activities.append({
+                    'process': name,
+                    'window_title': title,
+                    'start_time': start_time,
+                    'duration_minutes': duration // 60
+                })
+
+            return activities
+
+    def get_usage_between(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """获取在指定日期范围内（包含两端）的按应用聚合使用时间
+
+        Args:
+            start_date: 起始日期，格式 'YYYY-MM-DD'
+            end_date: 结束日期，格式 'YYYY-MM-DD'
+
+        Returns:
+            List[Dict]: 每个应用的 {'name','hours','minutes'} 列表，按时长降序
+        """
+        # Normalize dates - basic validation
+        try:
+            # ensure parseable
+            _ = datetime.strptime(start_date, "%Y-%m-%d")
+            _ = datetime.strptime(end_date, "%Y-%m-%d")
+        except Exception:
+            raise ValueError("start_date 和 end_date 必须为 'YYYY-MM-DD' 格式")
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                            SELECT p.name, SUM(ws.duration_seconds) as total_seconds
+                            FROM window_sessions ws
+                                    JOIN processes p ON ws.process_id = p.id
+                            WHERE DATE(ws.start_time) >= DATE(?) AND DATE(ws.start_time) <= DATE(?)
+                            GROUP BY p.name
+                            ORDER BY total_seconds DESC
+                            ''', (start_date, end_date))
+
+            app_usage = []
+            for name, seconds in cursor.fetchall():
+                seconds = seconds or 0
+                app_usage.append({
+                    'name': name,
+                    'hours': round(seconds / 3600, 2),
+                    'minutes': seconds // 60
+                })
+
+            return app_usage

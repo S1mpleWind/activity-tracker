@@ -11,3 +11,8 @@ pyobjc-core==9.2; sys_platform == 'darwin'
 
 # 平台特定 - Linux
 python-xlib==0.33; sys_platform == 'linux'
+
+# GUI
+customtkinter==5.2.2
+packaging
+matplotlib
