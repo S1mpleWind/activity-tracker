@@ -6,11 +6,15 @@
 
 ## 使用指南
 
-#### 0.将代码拉取到你的本地
+### （1）.直接下载release并解压，点击gui.exe运行
 
-#### 1.(创建一个conda环境)， `pip install requirementlist`
+### （2）.使用源码运行
 
-#### 2.`python gui.py`
+#### 0.拥有一个python并将代码拉取到你的本地
+
+#### 1.(创建一个conda环境)， 并`pip install requirementlist`
+
+#### 2.运行`python gui.py`
 有关GUI的使用介绍：
 
 0. 这是一个简陋的gui
