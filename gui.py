@@ -372,8 +372,41 @@ class App(customtkinter.CTk):
     def load_today(self):
         """快捷加载今日分析（可通过 Ctrl+T 触发）"""
         try:
+            print("🔍 DEBUG: 开始 load_today")
             summary = self.analyzer.get_today_summary()
             usage = summary.get('app_usage', [])
+
+            # 🎯 关键修复：确保数据有效
+            # 1. 过滤掉分钟数为0的数据
+            valid_usage = []
+            for item in usage:
+                minutes = item.get('minutes', 0)
+                hours = item.get('hours', 0)
+
+                # 只包含有实际使用时间的数据
+                if minutes > 0 or hours > 0:
+                    valid_usage.append(item)
+
+            usage = valid_usage
+
+            # 2. 如果没有有效数据，显示提示
+            if not usage:
+                # 显示无数据界面
+                if self.chart_frame is None:
+                    self.chart_frame = customtkinter.CTkFrame(self.analysis_frame)
+                    self.chart_frame.grid(row=1, column=0, padx=20, pady=20, sticky="nsew")
+
+                # 清除之前的部件
+                for widget in self.chart_frame.winfo_children():
+                    widget.destroy()
+
+                label = customtkinter.CTkLabel(
+                    self.chart_frame,
+                    text="📊 Today's usage data is too small to visualize\n\nTry using the computer for a few minutes first.",
+                    font=("Arial", 14)
+                )
+                label.pack(pady=40)
+                return
 
             # create chart_frame if not exists
             if self.chart_frame is None:
@@ -393,13 +426,31 @@ class App(customtkinter.CTk):
             for widget in self.chart_frame.winfo_children():
                 widget.destroy()
 
-            if not usage:
-                label = customtkinter.CTkLabel(self.chart_frame, text="No data for today yet.")
+            viz = Visualize()
+            choose_data = usage[:10]
+
+            # 🎯 再次验证数据
+            if not choose_data or all(item.get('minutes', 0) == 0 for item in choose_data):
+                label = customtkinter.CTkLabel(
+                    self.chart_frame,
+                    text="📊 Insufficient data for visualization\n(minutes values are all zero)",
+                    font=("Arial", 12)
+                )
                 label.pack(pady=20)
                 return
 
-            viz = Visualize()
-            choose_data = usage[:10]
+            # 🎯 修复：确保数据中有正值
+            # 如果所有值都是0或很小，matplotlib会出错
+            max_minutes = max(item.get('minutes', 0) for item in choose_data)
+            if max_minutes <= 0:
+                label = customtkinter.CTkLabel(
+                    self.chart_frame,
+                    text="No significant activity to display",
+                    font=("Arial", 12)
+                )
+                label.pack(pady=20)
+                return
+
             if len(choose_data) > 8 or any(len(item.get('name', '')) > 18 for item in choose_data):
                 fig = viz.plot_bar_figure(choose_data, figsize=(8, None))
             else:
@@ -414,11 +465,17 @@ class App(customtkinter.CTk):
             table_txt.pack(fill="x", pady=(10, 0))
             table_txt.insert("0.0", "Process | Duration(min) | Duration(hours)\n")
             table_txt.insert("1.0", "" + ("-" * 80) + "\n")
-            for item in sorted(usage, key=lambda x: x.get('minutes', 0), reverse=True):
-                name = item.get('name')
+
+            # 对数据进行排序，确保有正值
+            sorted_usage = sorted(usage, key=lambda x: x.get('minutes', 0), reverse=True)
+
+            for item in sorted_usage:
+                name = item.get('name', 'Unknown')
                 minutes = item.get('minutes', 0)
                 hours = item.get('hours', 0)
-                line = f"{name} | {minutes} | {hours}\n"
+
+                # 格式化显示
+                line = f"{name[:30]:30} | {minutes:10.2f} | {hours:12.4f}\n"
                 table_txt.insert("end", line)
 
             table_txt.configure(state="disabled")
@@ -427,7 +484,10 @@ class App(customtkinter.CTk):
             self.log_message("Loaded today's analysis via shortcut")
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load today's usage: {e}")
+            print(f"❌ ERROR in load_today: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Error", f"Failed to load today's usage: {str(e)[:100]}...")
 
     def clear_today(self):
         if messagebox.askyesno("Confirm", "Delete all records for today? This cannot be undone."):
