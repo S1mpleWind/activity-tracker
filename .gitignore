@@ -1,4 +1,32 @@
+
 .pytest_cache
+n
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database files (optional)
+*.db
+*.sqlite3
 
 activity.db
 
@@ -6,4 +34,3 @@ activity.db
 __pycache__/
 *.py[cod]
 *$py.class
-
