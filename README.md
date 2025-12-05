@@ -1,4 +1,4 @@
-# Activity Tracker
+# Time Scope 时间视界
 
 一个简单易用的 PC 活动追踪工具，帮你了解自己的电脑使用习惯。
 
