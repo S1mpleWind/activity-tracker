@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from tracker.windows.windows_tracker import WindowsTracker
+from tracker.time_manager import TimeManager
 from config import Config
 from data.database import ActivityDatabase
 from data.data_analysis import DataAnalyzer
@@ -70,16 +71,40 @@ class App(customtkinter.CTk):
         
         self.db = ActivityDatabase()
         self.analyzer = DataAnalyzer()
+
+        self.time_manager = TimeManager()
         
         self.is_tracking = False
         self.tracking_thread = None
         self.stop_event = threading.Event()
+
+        # when killing the program
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # 快捷键：Ctrl+T 触发今日分析
         try:
             self.bind_all('<Control-t>', lambda e: self.load_today())
         except Exception:
             pass
+
+    def on_close(self):
+        """
+        程序关闭时自动安全地结束当前会话
+        """
+        try:
+            # 停掉 tracking loop 线程
+            self.stop_event.set()
+            self.is_tracking = False
+
+            # 停掉数据库中未结束的 session
+            self.db.stop_current_session(None)
+
+            print("程序关闭：已自动结束当前会话。")
+        except Exception as e:
+            print(f"程序关闭时出错: {e}")
+
+        # 关闭窗口
+        self.destroy()
 
     def setup_dashboard(self):
         self.dashboard_frame.grid_columnconfigure(0, weight=1)
@@ -204,36 +229,68 @@ class App(customtkinter.CTk):
         self.log_message("Tracking stopped.")
 
     def tracking_loop(self):
+        """
+        主追踪循环（加入 TimeManager 检测休眠逻辑）
+        """
+        tm = self.time_manager  # 你应该在 self.__init__ 中创建了 TimeManager 实例
+
         while not self.stop_event.is_set():
             try:
-                # Foreground
+                # 1) 检查系统是否发生休眠（sleep event）
+                slept, sleep_start, wake_time = tm.check_for_sleep()
+
+                if slept:
+                    # 获取当前会话
+                    current_session = self.db.get_current_session_info()
+
+                    if current_session is not None:
+                        (
+                            session_process,
+                            session_title,
+                            session_start,
+                            session_id
+                        ) = current_session
+
+                        # 结束当前会话 —— 使用唤醒时间作为 specific_time
+                        # （end_window_session 已支持 specific_time）
+                        self.db.stop_current_session(
+                            endTime=sleep_start
+                        )
+
+                        timestamp = sleep_start.strftime("%H:%M:%S")
+                        self.update_log(
+                            f"[{timestamp}] 系统恢复，自动结束会话：{session_process} - {session_title}\n"
+                        )
+
+                    # ⚠️ 注意：休眠恢复后不要立刻开始新会话
+                    # 因为应该等下一次 foreground 信息采集（用户真正切回界面）
+                    # ↓ 继续执行下面逻辑即可（不 break、不 continue）
+
+                # 2) 获取当前前台窗口
                 process_name, window_title = self.tracker.get_foreground_info()
-                
+
                 if process_name:
-                    # Record to DB
-                    # Check if session changed (simple check: just call record, it handles logic)
-                    # Optimization: Only call if changed, but db.record_window_switch handles it?
-                    # Let's check current session to avoid spamming DB calls if not needed, 
-                    # but record_window_switch logic seems to handle "if changed".
-                    # Actually, looking at combine_test.py, it checks manually.
-                    
+                    # 每次实际活动时，推进内部时钟
+                    tm.update_internal_clock()
+
+                    # 当前会话
                     current_session = self.db.get_current_session_info()
                     should_record = False
-                    
+
                     if current_session is None:
                         should_record = True
                     else:
                         session_process, session_title, _, _ = current_session
                         if process_name != session_process or window_title != session_title:
                             should_record = True
-                    
+
                     if should_record:
                         if self.db.record_window_switch(process_name, window_title):
-                            timestamp = datetime.now().strftime("%H:%M:%S")
-                            msg = f"[{timestamp}] Switched to: {process_name} - {window_title}\n"
-                            self.update_log(msg)
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            self.update_log(f"[{ts}] Switched to: {process_name} - {window_title}\n")
 
-                time.sleep(1) # Check every second
+                time.sleep(1)
+
             except Exception as e:
                 self.update_log(f"Error: {e}\n")
                 time.sleep(5)
