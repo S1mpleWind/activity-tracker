@@ -75,7 +75,7 @@ class ActivityDatabase:
                 # 2. end the current conversation
                 if self.current_session_id is not None:
                     #print('has current_session_id')
-                    self.stop_current_session()
+                    self.stop_current_session(None)
 
                 # 3. start a new conversation
                 self.current_session_id = start_window_session(self.db_path, process_id, window_title)
@@ -91,7 +91,7 @@ class ActivityDatabase:
                 #     self.current_session_id = None
                 #     return False
 
-                print(f"✅ 成功创建会话: ID={self.current_session_id}, 进程={process_name}, 窗口={window_title}")
+                # print(f"✅ 成功创建会话: ID={self.current_session_id}, 进程={process_name}, 窗口={window_title}")
                 return True
 
         except Exception as e:
@@ -139,18 +139,22 @@ class ActivityDatabase:
             print(f"❌ 获取当前会话信息失败: {e}")
             return None
 
-    def stop_current_session(self) -> bool:
+    def stop_current_session(self,endTime:Optional[datetime]) -> bool:
         """
         停止当前活跃会话
         Returns:
             bool: 是否成功停止
         """
         if self.current_session_id is None : return False
+
+        # TODO : acccomplish in utils
+        
         try:
-            return end_window_session(self.db_path, self.current_session_id)
+            return end_window_session(self.db_path, self.current_session_id,endTime)
 
         except Exception as e:
             print("falied when stop_current_session()",e)
+
 
 
     def get_today_activities(self, limit: int = 50) -> List[Tuple]:
@@ -191,39 +195,67 @@ class ActivityDatabase:
         pass
 
     def delete_today_data(self) -> int:
-        """删除今日的所有 window_sessions 记录，并返回删除的行数"""
+        """删除今日的所有 window_sessions 记录（本地时间），并返回删除的行数"""
         try:
+            today = datetime.now().strftime("%Y-%m-%d")
+
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+
                 # Count rows to be deleted
-                cursor.execute("SELECT COUNT(*) FROM window_sessions WHERE DATE(start_time) = DATE('now')")
+                cursor.execute(
+                    "SELECT COUNT(*) FROM window_sessions WHERE DATE(start_time) = DATE(?)",
+                    (today,)
+                )
                 count = cursor.fetchone()[0] or 0
-                cursor.execute("DELETE FROM window_sessions WHERE DATE(start_time) = DATE('now')")
+
+                # Delete rows
+                cursor.execute(
+                    "DELETE FROM window_sessions WHERE DATE(start_time) = DATE(?)",
+                    (today,)
+                )
                 conn.commit()
                 return count
+
         except Exception as e:
             print(f"Error deleting today's data: {e}")
             return 0
 
     def delete_range(self, start_date: str, end_date: str) -> int:
-        """删除在指定日期范围（包含两端）内的 window_sessions 记录，返回删除的行数
-
-        Args:
-            start_date: 'YYYY-MM-DD'
-            end_date: 'YYYY-MM-DD'
-        """
+        """删除指定范围内的 window_sessions 记录（使用本地时间），返回删除的行数"""
         try:
-            # basic validation
-            _ = datetime.strptime(start_date, "%Y-%m-%d")
-            _ = datetime.strptime(end_date, "%Y-%m-%d")
+            # Ensure correct date format
+            start = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%d")
+            end = datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%d")
 
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM window_sessions WHERE DATE(start_time) >= DATE(?) AND DATE(start_time) <= DATE(?)", (start_date, end_date))
+
+                # Count rows
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM window_sessions
+                    WHERE DATE (start_time) >= DATE (?)
+                      AND DATE (start_time) <= DATE (?)
+                    """,
+                    (start, end)
+                )
                 count = cursor.fetchone()[0] or 0
-                cursor.execute("DELETE FROM window_sessions WHERE DATE(start_time) >= DATE(?) AND DATE(start_time) <= DATE(?)", (start_date, end_date))
+
+                # Delete rows
+                cursor.execute(
+                    """
+                    DELETE
+                    FROM window_sessions
+                    WHERE DATE(start_time) >= DATE(?)
+                      AND DATE(start_time) <= DATE(?)
+                    """,
+                    (start, end)
+                )
                 conn.commit()
                 return count
+
         except Exception as e:
             print(f"Error deleting range data: {e}")
             return 0
