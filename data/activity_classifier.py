@@ -41,7 +41,7 @@ class ActivityClassifier:
                            '学习', '教程', '文档'],
                 'color': '#4ECDC4'
             },
-            'communication': {
+            'social': {
                 'keywords': ['wechat', 'qq', 'outlook', 'gmail', 'telegram', 'discord', 'weixin', 'teams', 'meeting',
                            'slack', 'teams', 'whatsapp', 'messenger', '微信', 'QQ'],
                 'color': '#45B7D1'
@@ -229,6 +229,7 @@ class ActivityClassifier:
         classified = {}
         for category in self.categories.keys():
             classified[category] = {
+                'seconds': 0,  # 改为秒数统计，避免舍入误差
                 'minutes': 0,
                 'hours': 0.0,
                 'percentage': 0.0,
@@ -236,6 +237,7 @@ class ActivityClassifier:
                 'color': self.categories[category]['color']
             }
         classified['other'] = {
+            'seconds': 0,  # 改为秒数统计，避免舍入误差
             'minutes': 0,
             'hours': 0.0,
             'percentage': 0.0,
@@ -247,18 +249,20 @@ class ActivityClassifier:
         total_seconds = 0
         for app_name, window_title, duration_seconds in sessions:
             category = self.classify_activity(app_name, window_title)
-            classified[category]['minutes'] += duration_seconds // 60
+            classified[category]['seconds'] += duration_seconds  # 直接累加秒数
             classified[category]['session_count'] += 1
             total_seconds += duration_seconds
         
         # 计算小时和百分比
         if total_seconds > 0:
             for category in classified:
-                minutes = classified[category]['minutes']
-                classified[category]['hours'] = round(minutes / 60, 2)
+                seconds = classified[category]['seconds']
+                classified[category]['minutes'] = seconds // 60  # 在最后转换
+                classified[category]['hours'] = round(seconds / 3600, 2)
                 classified[category]['percentage'] = round(
-                    (minutes * 60 / total_seconds) * 100, 1
+                    (seconds / total_seconds) * 100, 1
                 )
+                del classified[category]['seconds']  # 删除中间变量
         
         return {
             'statistics': classified,

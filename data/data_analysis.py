@@ -168,6 +168,15 @@ class DataAnalyzer:
 
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            
+            # 先检查是否有该日期范围内的数据
+            cursor.execute('''
+                            SELECT COUNT(*) FROM window_sessions 
+                            WHERE DATE(start_time) >= DATE(?) AND DATE(start_time) <= DATE(?)
+                            ''', (start_date, end_date))
+            count = cursor.fetchone()[0]
+            print(f"DEBUG: 日期范围 {start_date} 到 {end_date} 中有 {count} 条记录")
+            
             cursor.execute('''
                             SELECT p.name, SUM(ws.duration_seconds) as total_seconds
                             FROM window_sessions ws
@@ -185,5 +194,7 @@ class DataAnalyzer:
                     'hours': round(seconds / 3600, 2),
                     'minutes': seconds // 60
                 })
+            
+            print(f"DEBUG: 获取到 {len(app_usage)} 个应用的使用数据")
 
             return app_usage

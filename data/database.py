@@ -154,45 +154,7 @@ class ActivityDatabase:
 
         except Exception as e:
             print("falied when stop_current_session()",e)
-
-
-
-    def get_today_activities(self, limit: int = 50) -> List[Tuple]:
-        """
-        获取今日活动记录
-
-        Args:
-            limit: 返回记录数量限制
-
-        Returns:
-            List[Tuple]: 活动记录列表
-        """
-        pass
-
-    def get_usage_statistics(self, days: int = 1) -> Dict[str, Any]:
-        """
-        获取使用统计
-
-        Args:
-            days: 统计天数
-
-        Returns:
-            Dict: 统计信息
-        """
-        pass
-
-    def get_process_usage(self, process_name: str, days: int = 7) -> Dict[str, Any]:
-        """
-        获取特定进程的使用情况
-
-        Args:
-            process_name: 进程名称
-            days: 统计天数
-
-        Returns:
-            Dict: 进程使用统计
-        """
-        pass
+            return False
 
     def delete_today_data(self) -> int:
         """删除今日的所有 window_sessions 记录（本地时间），并返回删除的行数"""
@@ -260,44 +222,8 @@ class ActivityDatabase:
             print(f"Error deleting range data: {e}")
             return 0
 
-    def cleanup_old_records(self, days_to_keep: int = 30) -> int:
-        """
-        清理旧记录
-
-        Args:
-            days_to_keep: 保留天数
-
-        Returns:
-            int: 删除的记录数量
-        """
-        pass
-
-    def export_data(self, start_date: str, end_date: str,
-                    format_type: str = "json") -> Any:
-        """
-        导出数据
-
-        Args:
-            start_date: 开始日期 (YYYY-MM-DD)
-            end_date: 结束日期 (YYYY-MM-DD)
-            format_type: 导出格式 (json/csv)
-
-        Returns:
-            导出数据
-        """
-        pass
-
-    def get_database_info(self) -> Dict[str, Any]:
-        """
-        获取数据库信息
-
-        Returns:
-            Dict: 数据库统计信息
-        """
-        pass
-
     def close(self) -> None:
-        """关闭数据库连接"""
+        """关闭数据库连接（如有需要）"""
         pass
 
     def __enter__(self):
@@ -307,3 +233,4 @@ class ActivityDatabase:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """退出上下文时自动关闭"""
         self.close()
+

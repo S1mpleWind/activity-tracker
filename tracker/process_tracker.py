@@ -49,6 +49,3 @@ class BaseTracker(abc.ABC):
             return any(keyword in window_title for keyword in default_ignore)
 
         return any(keyword in window_title for keyword in self.config.IGNORE_WINDOW_KEYWORDS)
-
-    def _select_important_process(self):
-        pass

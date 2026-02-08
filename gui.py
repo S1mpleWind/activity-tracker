@@ -5,9 +5,12 @@ import threading
 import time
 import sys
 import os
+import ctypes
 from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import pystray
+from PIL import Image
 
 from tracker.windows.windows_tracker import WindowsTracker
 from tracker.time_manager import TimeManager
@@ -15,6 +18,8 @@ from config import Config
 from data.database import ActivityDatabase
 from data.data_analysis import DataAnalyzer
 from data.visualize import Visualize
+from data.activity_classifier import ActivityClassifier
+from utils import normalize_date, normalize_date_range
 
 customtkinter.set_appearance_mode("System")
 customtkinter.set_default_color_theme("blue")
@@ -22,6 +27,10 @@ customtkinter.set_default_color_theme("blue")
 class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
+
+        self.tray_icon = None
+        self.tray_thread = None
+        self.is_quitting = False
 
         # configure window
         self.title("Activity Tracker")
@@ -43,22 +52,28 @@ class App(customtkinter.CTk):
         self.sidebar_button_1.grid(row=1, column=0, padx=20, pady=10)
         self.sidebar_button_2 = customtkinter.CTkButton(self.sidebar_frame, command=self.show_analysis, text="Analysis")
         self.sidebar_button_2.grid(row=2, column=0, padx=20, pady=10)
+        self.sidebar_button_3 = customtkinter.CTkButton(self.sidebar_frame, command=self.show_classifier, text="Classifier")
+        self.sidebar_button_3.grid(row=3, column=0, padx=20, pady=10)
         
         self.appearance_mode_label = customtkinter.CTkLabel(self.sidebar_frame, text="Appearance Mode:", anchor="w")
-        self.appearance_mode_label.grid(row=5, column=0, padx=20, pady=(10, 0))
+        self.appearance_mode_label.grid(row=6, column=0, padx=20, pady=(10, 0))
         self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.sidebar_frame, values=["Light", "Dark", "System"],
                                                                        command=self.change_appearance_mode_event)
-        self.appearance_mode_optionemenu.grid(row=6, column=0, padx=20, pady=(10, 20))
+        self.appearance_mode_optionemenu.grid(row=7, column=0, padx=20, pady=(10, 20))
 
         # Create Frames
         self.dashboard_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent")
         self.analysis_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.classifier_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent")
 
         # Initialize Dashboard
         self.setup_dashboard()
         
         # Initialize Analysis
         self.setup_analysis()
+        
+        # Initialize Classifier
+        self.setup_classifier()
 
         # Select default frame
         self.select_frame_by_name("dashboard")
@@ -71,6 +86,7 @@ class App(customtkinter.CTk):
         
         self.db = ActivityDatabase()
         self.analyzer = DataAnalyzer()
+        self.classifier = ActivityClassifier()
 
         self.time_manager = TimeManager()
         
@@ -80,6 +96,10 @@ class App(customtkinter.CTk):
 
         # when killing the program
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.bind("<Unmap>", self.on_minimize)
+
+        # tray icon
+        self.setup_tray_icon()
 
         # 快捷键：Ctrl+T 触发今日分析
         try:
@@ -89,7 +109,59 @@ class App(customtkinter.CTk):
 
     def on_close(self):
         """
-        程序关闭时自动安全地结束当前会话
+        关闭按钮行为：隐藏到托盘，保持后台运行
+        """
+        if self.is_quitting:
+            self._cleanup_and_exit()
+            return
+
+        self.hide_window()
+
+    def on_minimize(self, event):
+        if self.state() == "iconic":
+            self.hide_window()
+
+    def setup_tray_icon(self):
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), "asset", "icon.ico")
+            image = Image.open(icon_path)
+
+            menu = pystray.Menu(
+                pystray.MenuItem("Show", self._tray_show),
+                pystray.MenuItem("Hide", self._tray_hide),
+                pystray.MenuItem("Quit", self._tray_quit)
+            )
+
+            self.tray_icon = pystray.Icon("activity-tracker", image, "Activity Tracker", menu)
+            self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
+            self.tray_thread.start()
+        except Exception as e:
+            print(f"Failed to initialize tray icon: {e}")
+
+    def _tray_show(self, icon=None, item=None):
+        self.after(0, self.show_window)
+
+    def _tray_hide(self, icon=None, item=None):
+        self.after(0, self.hide_window)
+
+    def _tray_quit(self, icon=None, item=None):
+        self.after(0, self.quit_app)
+
+    def show_window(self):
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def hide_window(self):
+        self.withdraw()
+
+    def quit_app(self):
+        self.is_quitting = True
+        self._cleanup_and_exit()
+
+    def _cleanup_and_exit(self):
+        """
+        程序真正退出时清理资源
         """
         try:
             # 停掉 tracking loop 线程
@@ -99,11 +171,16 @@ class App(customtkinter.CTk):
             # 停掉数据库中未结束的 session
             self.db.stop_current_session(None)
 
-            print("程序关闭：已自动结束当前会话。")
+            print("程序退出：已自动结束当前会话。")
         except Exception as e:
-            print(f"程序关闭时出错: {e}")
+            print(f"程序退出时出错: {e}")
 
-        # 关闭窗口
+        try:
+            if self.tray_icon:
+                self.tray_icon.stop()
+        except Exception:
+            pass
+
         self.destroy()
 
     def setup_dashboard(self):
@@ -171,10 +248,41 @@ class App(customtkinter.CTk):
         self.analysis_placeholder = customtkinter.CTkLabel(self.analysis_frame, text="Use 'Load Range' to display charts and tables.")
         self.analysis_placeholder.grid(row=1, column=0, padx=20, pady=20, sticky="nsew")
 
+    def setup_classifier(self):
+        """设置分类器界面"""
+        self.classifier_frame.grid_columnconfigure(0, weight=1)
+        self.classifier_frame.grid_rowconfigure(0, weight=0)  # 按钮区域
+        self.classifier_frame.grid_rowconfigure(1, weight=1)  # 结果区域
+
+        # 按钮区域
+        self.classifier_button_frame = customtkinter.CTkFrame(self.classifier_frame)
+        self.classifier_button_frame.grid(row=0, column=0, padx=20, pady=10, sticky="nsew")
+        self.classifier_button_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        self.classifier_start_entry = customtkinter.CTkEntry(self.classifier_button_frame, placeholder_text="Start YYYY-MM-DD")
+        self.classifier_start_entry.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        self.classifier_end_entry = customtkinter.CTkEntry(self.classifier_button_frame, placeholder_text="End YYYY-MM-DD")
+        self.classifier_end_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+
+        self.classifier_load_btn = customtkinter.CTkButton(self.classifier_button_frame, text="Classify", 
+                                                           command=self.load_classifier)
+        self.classifier_load_btn.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+
+        self.classifier_today_btn = customtkinter.CTkButton(self.classifier_button_frame, text="Today", 
+                                                            command=self.load_classifier_today)
+        self.classifier_today_btn.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
+
+        # 结果区域
+        self.classifier_result_frame = None
+        self.classifier_placeholder = customtkinter.CTkLabel(self.classifier_frame, 
+                                                             text="Use 'Classify' to analyze and categorize your activities.")
+        self.classifier_placeholder.grid(row=1, column=0, padx=20, pady=20, sticky="nsew")
+
     def select_frame_by_name(self, name):
         # set button color for selected button
         self.sidebar_button_1.configure(fg_color=("gray75", "gray25") if name == "dashboard" else "transparent")
         self.sidebar_button_2.configure(fg_color=("gray75", "gray25") if name == "analysis" else "transparent")
+        self.sidebar_button_3.configure(fg_color=("gray75", "gray25") if name == "classifier" else "transparent")
 
         # show selected frame
         if name == "dashboard":
@@ -186,9 +294,17 @@ class App(customtkinter.CTk):
             self.analysis_frame.grid(row=0, column=1, sticky="nsew")
         else:
             self.analysis_frame.grid_forget()
+        
+        if name == "classifier":
+            self.classifier_frame.grid(row=0, column=1, sticky="nsew")
+        else:
+            self.classifier_frame.grid_forget()
 
     def show_dashboard(self):
         self.select_frame_by_name("dashboard")
+
+    def show_classifier(self):
+        self.select_frame_by_name("classifier")
 
     def show_analysis(self):
         self.select_frame_by_name("analysis")
@@ -366,6 +482,7 @@ class App(customtkinter.CTk):
             label.pack(pady=20)
             
 
+
     def load_range(self):
         start = self.range_start_entry.get().strip()
         end = self.range_end_entry.get().strip()
@@ -374,7 +491,16 @@ class App(customtkinter.CTk):
             return
 
         try:
+            # Normalize date format - handle both "2026-1-24" and "2026-01-24"
+            try:
+                start, end = normalize_date_range(start, end)
+            except ValueError as e:
+                messagebox.showerror("Invalid format", f"Dates must be valid dates in YYYY-MM-DD format (e.g., 2026-01-26).\nError: {e}")
+                return
+            
+            print(f"DEBUG: 查询日期范围 {start} 到 {end}")
             usage = self.analyzer.get_usage_between(start, end)
+            print(f"DEBUG: 获得数据 {len(usage)} 条记录")
 
             # create chart_frame if not exists
             if self.chart_frame is None:
@@ -586,6 +712,129 @@ class App(customtkinter.CTk):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete range: {e}")
 
-if __name__ == "__main__":
+    def load_classifier(self):
+        """加载分类器分析结果"""
+        start = self.classifier_start_entry.get().strip()
+        end = self.classifier_end_entry.get().strip()
+        if not start or not end:
+            messagebox.showwarning("Input required", "Please provide both start and end dates in YYYY-MM-DD format.")
+            return
+
+        try:
+            # Normalize date format
+            try:
+                start, end = normalize_date_range(start, end)
+            except ValueError as e:
+                messagebox.showerror("Invalid format", f"Dates must be valid dates in YYYY-MM-DD format.\nError: {e}")
+                return
+            
+            result = self.classifier.get_classified_statistics(start, end)
+            if result and result.get('statistics'):
+                self._display_classifier_results(result)
+            else:
+                messagebox.showwarning("No data", "No classification data available for the selected date range.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to classify: {e}")
+
+    def load_classifier_today(self):
+        """加载今日分类结果"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        try:
+            result = self.classifier.get_daily_classification(today)
+            if result and result.get('statistics'):
+                self._display_classifier_results(result)
+            else:
+                messagebox.showwarning("No data", "No classification data available for today.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to classify today: {e}")
+
+    def _display_classifier_results(self, result):
+        """显示分类结果"""
+        # 创建结果框架（如果不存在）
+        if self.classifier_result_frame is None:
+            try:
+                if getattr(self, 'classifier_placeholder', None):
+                    self.classifier_placeholder.grid_forget()
+            except Exception:
+                pass
+
+            self.classifier_result_frame = customtkinter.CTkFrame(self.classifier_frame)
+            self.classifier_result_frame.grid(row=1, column=0, padx=20, pady=20, sticky="nsew")
+            self.classifier_result_frame.grid_rowconfigure(0, weight=1)
+            self.classifier_result_frame.grid_columnconfigure(0, weight=1)
+
+        # 清除之前的内容
+        for widget in self.classifier_result_frame.winfo_children():
+            widget.destroy()
+
+        stats = result['statistics']
+        total_hours = result['total_hours']
+        
+        # 显示饼图
+        try:
+            # 准备数据
+            chart_data = []
+            for category, data in stats.items():
+                if data['minutes'] > 0:
+                    chart_data.append({
+                        'name': category.capitalize(),
+                        'minutes': data['minutes'],
+                        'hours': data['hours']
+                    })
+            
+            if chart_data:
+                viz = Visualize()
+                fig = viz.plot_pie_figure(chart_data, figsize=(8, 6))
+                canvas = FigureCanvasTkAgg(fig, master=self.classifier_result_frame)
+                canvas.draw()
+                canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
+        except Exception as e:
+            print(f"Error displaying chart: {e}")
+
+        # 显示统计表
+        table_frame = customtkinter.CTkFrame(self.classifier_result_frame)
+        table_frame.pack(fill="both", expand=True, pady=(10, 0))
+
+        # 标题
+        title_label = customtkinter.CTkLabel(
+            table_frame, 
+            text=f"分类统计: {result['start_date']} 到 {result['end_date']} (总计: {total_hours:.1f} 小时)",
+            font=("Arial", 12, "bold")
+        )
+        title_label.pack(pady=(0, 10))
+
+        # 表格
+        table_txt = customtkinter.CTkTextbox(table_frame, height=150)
+        table_txt.pack(fill="both", expand=True)
+
+        # 表头
+        table_txt.insert("0.0", "Category      | Minutes | Hours  | % of Total | Sessions\n")
+        table_txt.insert("end", "-" * 75 + "\n")
+
+        # 按百分比降序排序
+        sorted_stats = sorted(stats.items(), key=lambda x: x[1]['percentage'], reverse=True)
+
+        for category, data in sorted_stats:
+            if data['minutes'] > 0:
+                line = f"{category:15}| {data['minutes']:7} | {data['hours']:6.1f} | {data['percentage']:9.1f}% | {data['session_count']:7}\n"
+                table_txt.insert("end", line)
+
+        table_txt.configure(state="disabled")
+
+
+def main():
+    """程序主入口"""
+    if sys.platform == "win32":
+        mutex_name = "Global\\ActivityTrackerSingleInstance"
+        mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+        if ctypes.GetLastError() == 183:
+            messagebox.showinfo("Already Running", "Activity Tracker is already running in the system tray.")
+            return
+
     app = App()
     app.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+
