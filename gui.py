@@ -344,6 +344,7 @@ class App(customtkinter.CTk):
         self.toggle_button.configure(text="Start Tracking", fg_color="green", hover_color="darkgreen")
         self.log_message("Tracking stopped.")
 
+#! most important
     def tracking_loop(self):
         """
         主追踪循环（加入 TimeManager 检测休眠逻辑）
@@ -393,6 +394,7 @@ class App(customtkinter.CTk):
                     current_session = self.db.get_current_session_info()
                     should_record = False
 
+                    # 是否需要记录
                     if current_session is None:
                         should_record = True
                     else:
